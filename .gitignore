@@ -47,6 +47,9 @@ env/
 htmlcov/
 .pytest_cache/
 .mypy_cache/
+.ruff_cache/
+.pyre/
+.hypothesis/
 
 # Package managers
 uv.lock
@@ -57,14 +60,32 @@ poetry.lock
 data/
 data_*/
 results/
-outputs/
 logs/
+.cache/
+cache/
+tmp/
+temp/
+wandb/
+mlruns/
+lightning_logs/
+runs/
+checkpoints/
+outputs/_eval_smoke/
+outputs/_fix_check/
+outputs/_fix_check_small/
 *.pkl
 *.npy
 *.npz
 *.h5
 *.hdf5
 *.parquet
+*.faiss
+*.ckpt
+*.pt
+*.pth
+*.bin
+*.sqlite
+*.db
 
 # Index files
 **/index/
@@ -92,3 +113,7 @@ Thumbs.db
 *.temp
 *.bak
 *.log
+*.pid
+
+# Notebook exports
+*.nbconvert.ipynb

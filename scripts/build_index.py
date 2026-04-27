@@ -1,134 +1,65 @@
 #!/usr/bin/env python3
-"""
-Build sentence-level embedding index for semantic search.
+"""Prepare HotPotQA artifacts and build FAISS retrieval artifacts."""
 
-Usage:
-    python scripts/build_index.py \
-        --chunks data/chunks.json \
-        --output data/index \
-        --model sentence-transformers/all-MiniLM-L6-v2
-"""
-
-import os
-import json
-import re
-import pickle
 import argparse
-from pathlib import Path
-from typing import List, Dict, Any
 
-from tqdm import tqdm
-
-
-def split_sentences(text: str) -> List[str]:
-    """Split text into sentences."""
-    sentences = re.split(r'[.!?\n]+', text)
-    return [s.strip() for s in sentences if s.strip() and len(s.strip()) > 10]
+from arag import Config
+from arag.data.hotpotqa import build_hotpotqa_artifacts
+from arag.retrieval.faiss_store import FaissArtifactStore
+from arag.utils.device import format_device_message
 
 
-def load_chunks(chunks_file: str) -> List[Dict[str, Any]]:
-    """Load chunks from file."""
-    with open(chunks_file, 'r', encoding='utf-8') as f:
-        data = json.load(f)
-    
-    if data and isinstance(data[0], dict):
-        return data
-    
-    chunks = []
-    for item in data:
-        if isinstance(item, str):
-            parts = item.split(':', 1)
-            if len(parts) == 2:
-                chunks.append({'id': parts[0], 'text': parts[1]})
-    return chunks
+def build_index(config: Config, force_rebuild: bool = False):
+    data_dir = config.get("data.prepared_dir", "data/hotpotqa")
+    retrieval_dir = config.get("retrieval.artifact_dir", "data/hotpotqa/index")
+    embed_limit = config.get("data.embed_sample_limit")
+    question_limit = config.get("data.question_sample_limit")
+    split_seed = config.get("data.split_seed", 42)
+    reuse_prepared = config.get("data.reuse_prepared_data", True)
+    reuse_existing = config.get("retrieval.reuse_existing", True) and not force_rebuild
 
+    print(format_device_message(config.get("embedding.device") or config.get("runtime.device")))
 
-def build_index(
-    chunks_file: str,
-    output_dir: str,
-    model_name: str,
-    device: str = None,
-    batch_size: int = 32
-):
-    """Build sentence-level embedding index."""
-    from sentence_transformers import SentenceTransformer
-    
-    # Load chunks
-    print(f"Loading chunks from: {chunks_file}")
-    chunks = load_chunks(chunks_file)
-    print(f"Loaded {len(chunks)} chunks")
-    
-    # Create chunk lookup
-    chunk_lookup = {c['id']: c for c in chunks}
-    
-    # Extract sentences
-    print("Extracting sentences...")
-    sentences = []
-    sentence_to_chunk = []
-    
-    for chunk in tqdm(chunks, desc="Processing chunks"):
-        chunk_sentences = split_sentences(chunk['text'])
-        for sent in chunk_sentences:
-            sentences.append(sent)
-            sentence_to_chunk.append(chunk['id'])
-    
-    print(f"Total sentences: {len(sentences)}")
-    
-    # Load model
-    print(f"Loading model: {model_name}")
-    model = SentenceTransformer(model_name, device=device)
-    print(f"Model loaded. Embedding dimension: {model.get_sentence_embedding_dimension()}")
-    
-    # Encode sentences
-    print("Encoding sentences...")
-    embeddings = model.encode(
-        sentences,
-        batch_size=batch_size,
-        show_progress_bar=True,
-        normalize_embeddings=True
+    artifacts = build_hotpotqa_artifacts(
+        output_dir=data_dir,
+        seed=split_seed,
+        embed_sample_limit=embed_limit,
+        question_sample_limit=question_limit,
     )
-    
-    # Save index
-    output_path = Path(output_dir)
-    output_path.mkdir(parents=True, exist_ok=True)
-    
-    index_file = output_path / "sentence_index.pkl"
-    index_data = {
-        'sentences': sentences,
-        'embeddings': embeddings,
-        'sentence_to_chunk': sentence_to_chunk,
-        'chunks': chunk_lookup,
-        'model_name': model_name
+
+    import json
+
+    chunk_records = json.loads(open(artifacts.get("corpus_chunks", artifacts["train_chunks"]), "r", encoding="utf-8").read())
+    store = FaissArtifactStore(
+        artifact_dir=retrieval_dir,
+        embedding_model=config.get("embedding.model", "BAAI/bge-m3"),
+        device=config.get("embedding.device") or config.get("runtime.device"),
+    )
+
+    expected_metadata = {
+        "embed_sample_limit": config.get("data.embed_sample_limit"),
+        "question_sample_limit": config.get("data.question_sample_limit"),
+        "split_seed": split_seed,
     }
-    
-    print(f"Saving index to: {index_file}")
-    with open(index_file, 'wb') as f:
-        pickle.dump(index_data, f)
-    
-    print(f"Index built successfully!")
-    print(f"  - Chunks: {len(chunks)}")
-    print(f"  - Sentences: {len(sentences)}")
-    print(f"  - Embedding dim: {embeddings.shape[1]}")
+    if reuse_existing and store.exists() and store.matches(expected_metadata):
+        print(f"Reusing existing retrieval artifacts from {retrieval_dir}")
+        return artifacts
+
+    batch_size = config.get("embedding.batch_size", 32)
+    store.build(chunk_records=chunk_records, batch_size=batch_size, expected_metadata=expected_metadata)
+    print(f"Built FAISS retrieval artifacts in {retrieval_dir}")
+    return artifacts
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Build semantic search index")
-    parser.add_argument("--chunks", "-c", required=True, help="Path to chunks.json")
-    parser.add_argument("--output", "-o", required=True, help="Output directory for index")
-    parser.add_argument("--model", "-m", default="sentence-transformers/all-MiniLM-L6-v2",
-                       help="Embedding model name or path")
-    parser.add_argument("--device", "-d", default=None, help="Device (cuda:0, cpu, etc.)")
-    parser.add_argument("--batch-size", "-b", type=int, default=32, help="Batch size")
-    
+    parser = argparse.ArgumentParser(description="Build HotPotQA FAISS index")
+    parser.add_argument("--config", "-c", required=True, help="Config file path")
+    parser.add_argument("--force-rebuild", action="store_true", help="Rebuild prepared data and retrieval index")
+
     args = parser.parse_args()
-    
-    build_index(
-        chunks_file=args.chunks,
-        output_dir=args.output,
-        model_name=args.model,
-        device=args.device,
-        batch_size=args.batch_size
-    )
+
+    config = Config.from_yaml(args.config)
+    build_index(config=config, force_rebuild=args.force_rebuild)
 
 
 if __name__ == "__main__":

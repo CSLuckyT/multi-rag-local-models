@@ -44,7 +44,9 @@ class BaseAgent:
         force_prompt = (
             "You have reached the limit. "
             "You MUST now provide a final answer based on the information you have gathered so far. "
-            "Do NOT call any more tools. Synthesize the available information and respond directly."
+            "Do NOT call any more tools. "
+            "Return only the shortest direct answer span (entity/date/number/yes-no), with no explanation. "
+            "Do not include reasoning, uncertainty statements, or prefaces like 'The answer is'."
         )
         
         messages.append({"role": "user", "content": force_prompt})
@@ -52,7 +54,10 @@ class BaseAgent:
         try:
             response = self.llm.chat(messages=messages, tools=None, temperature=0.0)
             total_cost += response["cost"]
-            final_answer = response["message"].get("content", "")
+            raw_answer = response["message"].get("content", "")
+            final_answer = self.llm.extract_final_answer_text(raw_answer)
+            if not final_answer:
+                final_answer = str(raw_answer).strip()
             
             if self.verbose:
                 print(f"Forced answer: {final_answer[:200]}...")
@@ -61,8 +66,21 @@ class BaseAgent:
             if self.verbose:
                 print(f"Error getting forced answer: {e}")
             final_answer = f"Error: {reason} and failed to generate final answer."
+            raw_answer = final_answer
         
-        return final_answer, total_cost
+        return final_answer, raw_answer, total_cost
+
+    @staticmethod
+    def _looks_like_tool_payload(text: Optional[str]) -> bool:
+        if not text:
+            return False
+        lowered = text.lower()
+        return (
+            '"action"' in lowered
+            or '"tool_name"' in lowered
+            or 'tool result:' in lowered
+            or lowered.lstrip().startswith("{")
+        )
     
     def run(self, query: str) -> Dict[str, Any]:
         context = AgentContext()
@@ -89,12 +107,13 @@ class BaseAgent:
                 if self.verbose:
                     print(f"Token budget exceeded ({current_tokens} > {self.max_token_budget}), forcing answer...")
                 
-                final_answer, total_cost = self._force_final_answer(
+                final_answer, raw_answer, total_cost = self._force_final_answer(
                     messages, context, total_cost, "Token budget exceeded"
                 )
                 
                 return {
                     "answer": final_answer,
+                    "raw_answer": raw_answer,
                     "trajectory": trajectory,
                     "total_cost": total_cost,
                     "loops": loop_count,
@@ -120,11 +139,44 @@ class BaseAgent:
                 print(f"Assistant: {message['content'][:200]}...")
             
             tool_calls = message.get("tool_calls")
+            if not tool_calls and message.get("content"):
+                payload = self.llm.extract_agent_action_payload(message.get("content", ""))
+                if payload.get("action") == "tool" and payload.get("tool_name"):
+                    payload_args = payload.get("arguments", {})
+                    if isinstance(payload_args, str):
+                        try:
+                            payload_args = json.loads(payload_args)
+                        except json.JSONDecodeError:
+                            payload_args = {}
+                    if not isinstance(payload_args, dict):
+                        payload_args = {}
+                    tool_calls = [
+                        {
+                            "id": "call_1",
+                            "type": "function",
+                            "function": {
+                                "name": payload.get("tool_name"),
+                                "arguments": json.dumps(payload_args, ensure_ascii=False),
+                            },
+                        }
+                    ]
+
             if not tool_calls:
                 # No tool calls - agent is done
-                final_answer = message.get("content", "")
+                raw_answer = message.get("content", "")
+                final_answer = self.llm.extract_final_answer_text(raw_answer)
+
+                if final_answer is None or self._looks_like_tool_payload(final_answer):
+                    if self.verbose:
+                        print("Detected tool-only JSON without final answer, forcing one final synthesis...")
+                    final_answer, forced_raw_answer, total_cost = self._force_final_answer(
+                        messages, context, total_cost, "Tool-only response without final answer"
+                    )
+                    raw_answer = f"{raw_answer}\n\n[forced_final]\n{forced_raw_answer}".strip()
+
                 return {
                     "answer": final_answer,
+                    "raw_answer": raw_answer,
                     "trajectory": trajectory,
                     "total_cost": total_cost,
                     "loops": loop_count,
@@ -138,6 +190,20 @@ class BaseAgent:
                     func_args = json.loads(tc["function"]["arguments"])
                 except json.JSONDecodeError:
                     func_args = {}
+
+                if isinstance(func_args, str):
+                    try:
+                        func_args = json.loads(func_args)
+                    except json.JSONDecodeError:
+                        func_args = {}
+                if not isinstance(func_args, dict):
+                    func_args = {}
+
+                chunk_ids = func_args.get("chunk_ids")
+                if chunk_ids is not None and not isinstance(chunk_ids, list):
+                    func_args["chunk_ids"] = [str(chunk_ids)]
+                elif isinstance(chunk_ids, list):
+                    func_args["chunk_ids"] = [str(cid) for cid in chunk_ids]
                 
                 if self.verbose:
                     print(f"Tool: {func_name}")
@@ -176,12 +242,13 @@ class BaseAgent:
         if self.verbose:
             print(f"Max loops reached ({self.max_loops}), forcing answer...")
         
-        final_answer, total_cost = self._force_final_answer(
+        final_answer, raw_answer, total_cost = self._force_final_answer(
             messages, context, total_cost, "Maximum loops exceeded"
         )
         
         return {
             "answer": final_answer,
+            "raw_answer": raw_answer,
             "trajectory": trajectory,
             "total_cost": total_cost,
             "loops": loop_count,

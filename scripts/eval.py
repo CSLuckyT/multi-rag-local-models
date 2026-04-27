@@ -1,298 +1,161 @@
 #!/usr/bin/env python3
-"""
-Evaluation script for ARAG predictions.
+"""Notebook-style EM/F1 evaluation for baseline and agentic predictions."""
 
-Usage:
-    python scripts/eval.py \
-        --predictions results/predictions.jsonl \
-        --workers 10
-"""
-
-import os
-import json
-import re
-import string
 import argparse
+import json
 import logging
+import re
+from json import JSONDecodeError, JSONDecoder
 from pathlib import Path
-from concurrent.futures import ThreadPoolExecutor, as_completed
-from tqdm import tqdm
 
-from arag import LLMClient, Config
+import pandas as pd
 
-logger = logging.getLogger(__name__)
+from arag.evaluation.metrics import clean_prediction, compute_em, compute_f1
 
 
-def normalize_answer(s):
-    """Normalize answer for comparison."""
-    if s is None:
+def load_predictions(predictions_path: str):
+    with open(predictions_path, 'r', encoding='utf-8') as handle:
+        return [json.loads(line) for line in handle if line.strip()]
+
+
+def save_em_f1_bar_plot(summary_df: pd.DataFrame, output_path: Path, title: str):
+    try:
+        import matplotlib.pyplot as plt
+    except ImportError:
+        logging.warning("matplotlib is not installed; skipping EM/F1 plot generation.")
+        return None
+
+    mean_em = float(summary_df["EM"].mean())
+    mean_f1 = float(summary_df["F1"].mean())
+    metrics = ["EM", "F1"]
+    values = [mean_em, mean_f1]
+
+    figure, axis = plt.subplots(figsize=(6, 4))
+    axis.bar(metrics, values)
+    axis.set_ylim(0, 1)
+    axis.set_ylabel("Score")
+    axis.set_title(title)
+
+    for index, value in enumerate(values):
+        axis.text(index, min(value + 0.02, 0.99), f"{value:.3f}", ha="center")
+
+    figure.tight_layout()
+    figure.savefig(output_path, dpi=300, bbox_inches="tight")
+    plt.close(figure)
+    return output_path
+
+
+def extract_final_answer_fallback(pred_answer) -> str:
+    """Best-effort extraction of final answer text from JSON-like agent traces."""
+    text = "" if pred_answer is None else str(pred_answer)
+    text = text.strip()
+    if not text:
         return ""
-    if not isinstance(s, str):
-        s = str(s)
-    
-    def remove_articles(text):
-        return re.sub(r"\b(a|an|the)\b", " ", text)
-    
-    def white_space_fix(text):
-        return " ".join(text.split())
-    
-    def remove_punc(text):
-        exclude = set(string.punctuation)
-        return "".join(ch for ch in text if ch not in exclude)
-    
-    def lower(text):
-        return text.lower()
-    
-    return white_space_fix(remove_articles(remove_punc(lower(s))))
+
+    text = re.sub(r"^```(?:json)?\s*", "", text)
+    text = re.sub(r"\s*```$", "", text)
+    text = re.sub(r"(?im)^\s*(human|assistant|user|system)\s*:\s*", "", text)
+
+    try:
+        payload = json.loads(text)
+        if isinstance(payload, dict) and payload.get("action") == "final":
+            answer = payload.get("answer")
+            if isinstance(answer, str):
+                return answer
+            if answer is not None:
+                return str(answer)
+    except JSONDecodeError:
+        pass
+
+    decoder = JSONDecoder()
+    objects = []
+    for idx, char in enumerate(text):
+        if char != "{":
+            continue
+        try:
+            payload, _ = decoder.raw_decode(text[idx:])
+        except JSONDecodeError:
+            continue
+        if isinstance(payload, dict):
+            objects.append(payload)
+
+    finals = [obj for obj in objects if obj.get("action") == "final" and isinstance(obj.get("answer"), str)]
+    if finals:
+        return finals[-1]["answer"]
+
+    return text
 
 
-class Evaluator:
-    """Evaluator for ARAG predictions."""
-    
-    def __init__(self, llm_client, predictions_path):
-        self.llm_client = llm_client
-        self.predictions_path = predictions_path
-        self.prediction_results = self.load_predictions()
-    
-    def load_predictions(self):
-        """Load predictions from file."""
-        if self.predictions_path.endswith('.jsonl'):
-            prediction_results = []
-            with open(self.predictions_path, 'r', encoding='utf-8') as f:
-                for line in f:
-                    line = line.strip()
-                    if line:
-                        prediction_results.append(json.loads(line))
-        else:
-            with open(self.predictions_path, 'r', encoding='utf-8') as f:
-                prediction_results = json.load(f)
-        return prediction_results
-    
-    def calculate_llm_accuracy(self, pred_answer, gold_answer):
-        """Use LLM to judge if prediction is correct."""
-        system_prompt = "You are an expert evaluator."
-        user_prompt = f"""Please evaluate if the generated answer is correct by comparing it with the gold answer.
-Generated answer: {pred_answer}
-Gold answer: {gold_answer}
+def evaluate_predictions(predictions_path: str, output_dir: str = None, save_plot: bool = True):
+    predictions = load_predictions(predictions_path)
+    rows = []
 
-The generated answer should be considered correct if it:
-1. Contains the key information from the gold answer
-2. Is factually accurate and consistent with the gold answer
-3. Does not contain any contradicting information
-
-Respond with ONLY 'correct' or 'incorrect'.
-Response:"""
-        
-        response, _ = self.llm_client.generate(
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_prompt}
-            ],
-            temperature=0.0
-        )
-        
-        if response.strip().lower() == "correct":
-            return 1.0
-        else:
-            return 0.0
-    
-    def calculate_contain(self, pred_answer, gold_answer):
-        """Check if gold answer is contained in prediction."""
-        if not pred_answer or not gold_answer:
-            return 0
-        s1 = normalize_answer(pred_answer)
-        s2 = normalize_answer(gold_answer)
-        if s2 in s1:
-            return 1
-        else:
-            return 0
-    
-    def evaluate_single(self, idx, prediction):
-        """Evaluate single prediction."""
-        pred_answer = prediction.get("pred_answer", "")
-        gold_answer = prediction.get("gold_answer") or prediction.get("answer", "")
-        
-        if not isinstance(pred_answer, str):
-            return idx, 0.0, 0.0, "failed"
-        
-        has_answer = pred_answer and pred_answer.strip() != ""
-        
-        if has_answer:
-            llm_acc = self.calculate_llm_accuracy(pred_answer, gold_answer)
-            contain_acc = self.calculate_contain(pred_answer, gold_answer)
-            status = "answered"
-        else:
-            llm_acc = 0.0
-            contain_acc = 0.0
-            status = "failed"
-        
-        return idx, llm_acc, contain_acc, status
-    
-    def evaluate(self, max_workers, output_dir=None):
-        """Run evaluation with concurrent processing."""
-        llm_scores = [0.0] * len(self.prediction_results)
-        contain_scores = [0.0] * len(self.prediction_results)
-        statuses = [""] * len(self.prediction_results)
-        
-        with ThreadPoolExecutor(max_workers=max_workers) as executor:
-            futures = {
-                executor.submit(self.evaluate_single, idx, pred): idx
-                for idx, pred in enumerate(self.prediction_results)
+    for prediction in predictions:
+        pred_text = extract_final_answer_fallback(prediction.get("pred_answer", ""))
+        cleaned = clean_prediction(pred_text)
+        gold = prediction.get("gold_answer") or prediction.get("answer", "")
+        em = compute_em(cleaned, gold)
+        f1 = compute_f1(cleaned, gold)
+        prediction["pred_answer_extracted"] = pred_text
+        prediction["clean_pred_answer"] = cleaned
+        prediction["em"] = em
+        prediction["f1"] = f1
+        rows.append(
+            {
+                "Mode": prediction.get("mode", "unknown"),
+                "QID": prediction.get("qid"),
+                "Question": prediction.get("question"),
+                "Gold": gold,
+                "Prediction": cleaned,
+                "EM": em,
+                "F1": f1,
             }
-            
-            completed = 0
-            total_llm_score = 0.0
-            total_contain_score = 0.0
-            answered_count = 0
-            pbar = tqdm(total=len(futures), desc="Evaluating", unit="sample")
-            
-            for future in as_completed(futures):
-                idx, llm_acc, contain_acc, status = future.result()
-                llm_scores[idx] = llm_acc
-                contain_scores[idx] = contain_acc
-                statuses[idx] = status
-                self.prediction_results[idx]["llm_accuracy"] = llm_acc
-                self.prediction_results[idx]["contain_accuracy"] = contain_acc
-                self.prediction_results[idx]["status"] = status
-                
-                if status == "answered":
-                    answered_count += 1
-                total_llm_score += llm_acc
-                total_contain_score += contain_acc
-                
-                completed += 1
-                
-                if answered_count > 0:
-                    current_llm_acc = total_llm_score / answered_count
-                    current_contain_acc = total_contain_score / answered_count
-                else:
-                    current_llm_acc = 0.0
-                    current_contain_acc = 0.0
-                
-                answer_rate = answered_count / completed
-                pbar.set_postfix({
-                    'Answered': f'{answer_rate:.1%}',
-                    'LLM_Acc': f'{current_llm_acc:.3f}',
-                    'Contain': f'{current_contain_acc:.3f}'
-                })
-                pbar.update(1)
-            pbar.close()
-        
-        # Statistics
-        total_samples = len(self.prediction_results)
-        answered_samples = sum(1 for s in statuses if s == "answered")
-        failed_samples = sum(1 for s in statuses if s == "failed")
-        answer_rate = answered_samples / total_samples if total_samples > 0 else 0
-        
-        if answered_samples > 0:
-            llm_accuracy = sum(llm_scores) / answered_samples
-            contain_accuracy = sum(contain_scores) / answered_samples
-        else:
-            llm_accuracy = 0.0
-            contain_accuracy = 0.0
-        
-        # Cost and token statistics
-        total_cost = sum(p.get('total_cost', 0) for p in self.prediction_results)
-        total_retrieved_tokens = sum(p.get('total_retrieved_tokens', 0) for p in self.prediction_results)
-        avg_cost = total_cost / len(self.prediction_results) if self.prediction_results else 0
-        avg_retrieved_tokens = total_retrieved_tokens / len(self.prediction_results) if self.prediction_results else 0
-        avg_loops = sum(p.get('loops', 0) for p in self.prediction_results) / len(self.prediction_results) if self.prediction_results else 0
-        
-        logger.info(f"Evaluation Results:")
-        logger.info(f"  Total Samples: {total_samples}")
-        logger.info(f"  Answered: {answered_samples} ({answer_rate:.2%})")
-        logger.info(f"  Failed: {failed_samples}")
-        logger.info(f"  LLM Accuracy: {llm_accuracy:.4f}")
-        logger.info(f"  Contain Accuracy: {contain_accuracy:.4f}")
-        logger.info(f"  Total Cost: ${total_cost:.4f}")
-        logger.info(f"  Avg Loops: {avg_loops:.2f}")
-        
-        # Save results
-        if output_dir:
-            os.makedirs(output_dir, exist_ok=True)
-            actual_output_dir = output_dir
-        else:
-            actual_output_dir = os.path.dirname(self.predictions_path)
-        
-        base_name = os.path.basename(self.predictions_path)
-        
-        # Save predictions with evaluation
-        output_predictions_path = os.path.join(actual_output_dir, base_name)
-        if self.predictions_path.endswith('.jsonl'):
-            with open(output_predictions_path, "w", encoding="utf-8") as f:
-                for pred in self.prediction_results:
-                    f.write(json.dumps(pred, ensure_ascii=False) + '\n')
-        else:
-            with open(output_predictions_path, "w", encoding="utf-8") as f:
-                json.dump(self.prediction_results, f, ensure_ascii=False, indent=4)
-        
-        # Save summary
-        if base_name.endswith('.jsonl'):
-            summary_name = base_name.replace('.jsonl', '_eval_summary.json')
-        elif base_name.endswith('.json'):
-            summary_name = base_name.replace('.json', '_eval_summary.json')
-        else:
-            summary_name = "eval_summary.json"
-        
-        summary_path = os.path.join(actual_output_dir, summary_name)
-        with open(summary_path, "w", encoding="utf-8") as f:
-            json.dump({
-                "total_samples": total_samples,
-                "answered_samples": answered_samples,
-                "failed_samples": failed_samples,
-                "answer_rate": round(answer_rate, 4),
-                "llm_accuracy": llm_accuracy,
-                "contain_accuracy": contain_accuracy,
-                "correct_by_llm": int(sum(llm_scores)),
-                "correct_by_contain": int(sum(contain_scores)),
-                "total_cost": round(total_cost, 6),
-                "avg_cost_per_question": round(avg_cost, 6),
-                "total_retrieved_tokens": int(total_retrieved_tokens),
-                "avg_retrieved_tokens": round(avg_retrieved_tokens, 1),
-                "avg_loops": round(avg_loops, 2)
-            }, f, ensure_ascii=False, indent=4)
-        
-        logger.info(f"Summary saved to: {summary_path}")
-        
-        return llm_accuracy, contain_accuracy
+        )
+
+    results_df = pd.DataFrame(rows)
+    summary_df = results_df.groupby("Mode", dropna=False)[["EM", "F1"]].mean().reset_index()
+    summary_df["Samples"] = results_df.groupby("Mode", dropna=False).size().values
+
+    output_path = Path(output_dir or Path(predictions_path).parent)
+    output_path.mkdir(parents=True, exist_ok=True)
+    base_name = Path(predictions_path).stem
+
+    with open(output_path / f"{base_name}_scored.jsonl", 'w', encoding='utf-8') as handle:
+        for prediction in predictions:
+            handle.write(json.dumps(prediction, ensure_ascii=False) + '\n')
+
+    results_df.to_csv(output_path / f"{base_name}_per_example.csv", index=False)
+    summary_df.to_csv(output_path / f"{base_name}_summary.csv", index=False)
+
+    if save_plot:
+        plot_path = output_path / f"{base_name}_em_f1_bar.png"
+        title = f"EM/F1 Summary: {base_name}"
+        save_em_f1_bar_plot(summary_df, plot_path, title)
+
+    print(summary_df)
+    return summary_df
 
 
 def main():
     parser = argparse.ArgumentParser(description="Evaluate ARAG predictions")
     parser.add_argument("--predictions", "-p", required=True, help="Predictions file path (.json or .jsonl)")
-    parser.add_argument("--workers", "-w", type=int, default=10, help="Number of concurrent workers")
-    parser.add_argument("--output", "-o", type=str, default=None, help="Output directory")
-    
+    parser.add_argument("--output-dir", "-o", default=None, help="Output directory")
+    parser.add_argument("--no-plot", action="store_true", help="Skip saving the EM/F1 bar chart")
+
     args = parser.parse_args()
-    
+
     logging.basicConfig(
         level=logging.INFO,
         format='%(asctime)s - %(levelname)s - %(message)s'
     )
-    
-    print(f"\n{'='*60}")
-    print(f"ARAG Evaluation")
-    print(f"{'='*60}")
-    print(f"Predictions: {args.predictions}")
-    print(f"Workers: {args.workers}")
-    print(f"{'='*60}\n")
-    
-    # Create LLM client from environment variables
-    llm_client = LLMClient(
-        model=os.getenv('ARAG_MODEL', 'gpt-4o-mini'),
-        api_key=os.getenv('ARAG_API_KEY'),
-        base_url=os.getenv('ARAG_BASE_URL', 'https://api.openai.com/v1')
+
+    print(f"\n{'=' * 60}")
+    print(f"Evaluating predictions from: {args.predictions}")
+    evaluate_predictions(
+        predictions_path=args.predictions,
+        output_dir=args.output_dir,
+        save_plot=not args.no_plot,
     )
-    
-    evaluator = Evaluator(llm_client, args.predictions)
-    llm_acc, contain_acc = evaluator.evaluate(max_workers=args.workers, output_dir=args.output)
-    
-    print(f"\n{'='*60}")
-    print(f"Results")
-    print(f"{'='*60}")
-    print(f"LLM Accuracy: {llm_acc:.4f}")
-    print(f"Contain Accuracy: {contain_acc:.4f}")
-    print(f"{'='*60}\n")
 
 
 if __name__ == "__main__":

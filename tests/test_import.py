@@ -4,6 +4,7 @@
 def test_import_arag():
     import arag
     assert hasattr(arag, "__version__")
+    assert hasattr(arag, "BaselineRAGRunner")
 
 
 def test_import_core():
@@ -14,6 +15,24 @@ def test_import_core():
     assert Config is not None
     assert AgentContext is not None
     assert LLMClient is not None
+
+
+def test_import_new_modules():
+    from arag.baseline import BaselineRAGRunner
+    from arag.data.hotpotqa import build_document_chunks, normalize_sample_limit
+    from arag.evaluation.metrics import clean_prediction, compute_em, compute_f1
+    from arag.retrieval.faiss_store import FaissArtifactStore
+    from arag.utils.device import format_device_message, resolve_device
+
+    assert BaselineRAGRunner is not None
+    assert build_document_chunks is not None
+    assert normalize_sample_limit("All") is None
+    assert clean_prediction("answer\nmore") == "answer"
+    assert compute_em("The Beatles", "beatles") == 1
+    assert compute_f1("new york city", "new york") > 0
+    assert FaissArtifactStore is not None
+    assert format_device_message("cpu") == "Using device: cpu"
+    assert resolve_device("cpu") == "cpu"
 
 
 def test_import_tools():
@@ -63,3 +82,35 @@ def test_config_basic():
     assert cfg.get("llm.model") == "test"
     assert cfg.get("llm.temperature") == 0.5
     assert cfg.get("llm.missing", "default") == "default"
+
+
+def test_build_document_chunks_shape():
+    from arag.data.hotpotqa import build_document_chunks
+
+    example = {
+        "id": "sample-1",
+        "question": "Who wrote Hamlet?",
+        "answer": "William Shakespeare",
+        "context": {
+            "title": ["Hamlet"],
+            "sentences": [["Hamlet is a tragedy", "It was written by William Shakespeare"]],
+        },
+        "supporting_facts": {"title": ["Hamlet"], "sent_id": [1]},
+    }
+
+    processed = build_document_chunks(example)
+    assert processed["id"] == "sample-1"
+    assert len(processed["chunks"]) == 1
+    assert processed["chunks"][0]["id"] == "sample-1::0"
+    assert "William Shakespeare" in processed["chunks"][0]["text"]
+
+
+def test_local_llm_tool_parsing_without_model_load():
+    from arag.core.llm import LLMClient
+
+    client = LLMClient(model="Qwen/Qwen3-4B-Instruct-2507", device="cpu")
+    parsed = client._extract_json_payload('{"action":"tool","tool_name":"keyword_search","arguments":{"keywords":["beatles"]}}')
+    normalized = client._normalize_tool_response('{"action":"tool","tool_name":"keyword_search","arguments":{"keywords":["beatles"]}}')
+
+    assert parsed["action"] == "tool"
+    assert normalized["tool_calls"][0]["function"]["name"] == "keyword_search"
