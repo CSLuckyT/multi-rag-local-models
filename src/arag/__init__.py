@@ -7,15 +7,17 @@ from arag.core.context import AgentContext
 from arag.core.llm import LLMClient
 from arag.agent.base import BaseAgent
 from arag.baseline import BaselineRAGRunner
+from arag.enhanced import EnhancedRAGRunner
 from arag.tools.base import BaseTool
 from arag.tools.registry import ToolRegistry
 
 __all__ = [
     "Config",
-    "AgentContext", 
+    "AgentContext",
     "LLMClient",
     "BaseAgent",
     "BaselineRAGRunner",
+    "EnhancedRAGRunner",
     "BaseTool",
     "ToolRegistry",
     "__version__",

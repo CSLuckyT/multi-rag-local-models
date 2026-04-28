@@ -1,10 +1,11 @@
-# ARAG: Baseline + Agentic RAG for HotPotQA
+# ARAG: Baseline + Enhanced + Agentic RAG for HotPotQA
 
 ARAG is a local Retrieval-Augmented Generation (RAG) framework for multi-hop question answering on HotPotQA.
 
-The project includes two inference paths:
+The project includes three inference paths:
 
 - **Baseline RAG**: retrieve relevant chunks and generate an answer in a single pipeline.
+- **Enhanced RAG**: HyDE query rewriting → FAISS first-stage retrieval → cross-encoder reranking → short-answer generation.
 - **Agentic RAG**: an iterative tool-using agent that searches, reads, and reasons across chunks before answering.
 
 It is designed for fully local experimentation with:
@@ -18,12 +19,13 @@ In addition to inference, the project supports:
 
 - HotPotQA preprocessing and artifact creation
 - LoRA fine-tuning of the local Qwen model
-- Hyperparameter tuning for baseline and agentic modes
-- EM/F1 evaluation and per-example analysis
+- Hyperparameter tuning for all three modes
+- EM/F1 (+ optional BERTScore-F1 and support recall) evaluation
 
 ## Features
 
-- Baseline and Agentic RAG under one codebase
+- Baseline, Enhanced, and Agentic RAG under one codebase
+- Enhanced RAG with HyDE rewriting + BGE-reranker-v2-m3 cross-encoder
 - Tool-based agent loop (`keyword_search`, `semantic_search`, `read_chunk`)
 - Local index build pipeline using FAISS + BGE-M3
 - Reproducible data artifacts for train/validation/test questions
@@ -91,7 +93,8 @@ Important sections:
 - `embedding`: BGE-M3 model and embedding batch settings
 - `data`: HotPotQA artifact paths and sample limits
 - `retrieval`: FAISS artifact directory and top-k retrieval settings
-- `runtime`: execution mode (`baseline`, `agentic`, `both`)
+- `runtime`: execution mode (`baseline`, `agentic`, `enhanced`, `both`, `all`)
+- `enhanced`: reranker model, `n_first`, `k_rerank`, `use_hyde`, `filter_min_score`, `max_context_chars`
 - `training`: LoRA fine-tuning hyperparameters
 - `tuning`: search space for hyperparameter tuning
 
@@ -136,7 +139,16 @@ python scripts/build_index.py --config configs/example.yaml --force-rebuild
 
 ### 2) Run baseline and/or agentic inference
 
-Run both modes:
+Run all three modes:
+
+```bash
+python scripts/batch_runner.py \
+	--config configs/example.yaml \
+	--output outputs \
+	--mode all
+```
+
+Run baseline + agentic only (backward-compatible):
 
 ```bash
 python scripts/batch_runner.py \
@@ -145,22 +157,20 @@ python scripts/batch_runner.py \
 	--mode both
 ```
 
-Run agentic only:
+Run enhanced only:
 
 ```bash
 python scripts/batch_runner.py \
 	--config configs/example.yaml \
 	--output outputs \
-	--mode agentic
+	--mode enhanced
 ```
 
-Run baseline only:
+Run agentic or baseline only:
 
 ```bash
-python scripts/batch_runner.py \
-	--config configs/example.yaml \
-	--output outputs \
-	--mode baseline
+python scripts/batch_runner.py --config configs/example.yaml --output outputs --mode agentic
+python scripts/batch_runner.py --config configs/example.yaml --output outputs --mode baseline
 ```
 
 Useful flags:
@@ -171,23 +181,26 @@ Useful flags:
 
 ### 3) Evaluate predictions (EM/F1)
 
-Evaluate agentic predictions:
+Evaluate any mode:
 
 ```bash
+python scripts/eval.py --predictions outputs/predictions_enhanced.jsonl --output-dir outputs
+python scripts/eval.py --predictions outputs/predictions_baseline.jsonl --output-dir outputs
 python scripts/eval.py --predictions outputs/predictions_agentic.jsonl --output-dir outputs
 ```
 
-Evaluate baseline predictions:
+With optional BERTScore-F1 (requires `bert-score`):
 
 ```bash
-python scripts/eval.py --predictions outputs/predictions_baseline.jsonl --output-dir outputs
+python scripts/eval.py --predictions outputs/predictions_enhanced.jsonl \
+	--output-dir outputs --bertscore
 ```
 
 Generated files include:
 
 - `*_scored.jsonl`
-- `*_per_example.csv`
-- `*_summary.csv`
+- `*_per_example.csv` (includes `SupportRecall` column for enhanced mode)
+- `*_summary.csv` (includes `BERTScore_F1` column when `--bertscore` is used)
 - `*_em_f1_bar.png` (if matplotlib is installed)
 
 ### 4) Fine-tune Qwen with LoRA
@@ -220,6 +233,8 @@ The evaluation module computes:
 
 - **Exact Match (EM)**
 - **F1 score**
+- **Support Recall** — fraction of gold supporting facts retrieved (enhanced mode, when gold fact metadata is present)
+- **BERTScore-F1** — optional, requires `bert-score` and `--bertscore` flag
 
 Metrics are computed per-example and summarized by mode.
 
@@ -227,14 +242,16 @@ Metrics are computed per-example and summarized by mode.
 
 1. Configure experiment in `configs/example.yaml`
 2. Build artifacts/index with `build_index.py`
-3. Run `batch_runner.py` in `baseline`, `agentic`, or `both`
-4. Score outputs with `eval.py`
+3. Run `batch_runner.py` in `baseline`, `enhanced`, `agentic`, `both`, or `all`
+4. Score outputs with `eval.py` (add `--bertscore` for enhanced evaluation)
 5. (Optional) Fine-tune Qwen with `fine_tune.py`
-6. (Optional) Tune settings with `hyper_parameter_tuning.py`
+6. (Optional) Tune settings with `hyper_parameter_tuning.py` (supports all three modes)
 7. Re-run inference + evaluation with updated adapter/hyperparameters
 
 ## Notes
 
-- Agentic mode is designed for multi-step retrieval and reasoning using tools.
-- Baseline mode is useful as a fast control/reference pipeline.
+- **Baseline**: fast single-pass control pipeline.
+- **Enhanced**: HyDE query expansion + cross-encoder reranking; requires `sentence-transformers` (`pip install -e ".[full]"`).
+- **Agentic**: iterative tool-using reasoning; best for complex multi-hop questions.
+- `both` = baseline + agentic (backward-compatible). `all` = all three modes.
 - You can run everything locally; no hosted model API is required.

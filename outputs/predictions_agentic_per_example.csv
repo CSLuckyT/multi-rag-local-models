@@ -1,51 +1,6 @@
-Mode,QID,Question,Gold,Prediction,EM,F1
-agentic,5a7f64e655429969796c1a2a,In which film did the French actor Eriq Ebouaney appear that stars Rebecca Romijn and was screened at Cannes Film Festival in 2002?,Femme Fatale,Femme Fatale,1,1.0
-agentic,5abc3477554299700f9d7818,"What movie did ""the king of cool"" play in with Bud Ekins as his stunt double?","""The Great Escape""",The King of Cool,0,0.0
-agentic,5a8ccb97554299441c6b9f0c,Who did the man who Muhammad Ali beat in a surprise title win knock out in 1962?,Floyd Patterson,Muhammad Ali,0,0.0
-agentic,5a86ef3e55429960ec39b6df,What cup that Cambridge United will participate in is called the Carabao Cup for sponsorship reasons?,EFL Cup,FA Cup,0,0.5
-agentic,5a82fb0a55429954d2e2ebe1,John Coolidge Adams is an American composer of classical music and opera whose first opera was inspired by U.S. President Richard Nixon's visit to China in what year?,1972,1972,1,1.0
-agentic,5a8b2a3355429971feec465c,"The actress that was nominated for Best Actress for her performance in the film ""Humraaz""  also starred in what movie based on the life of a former Miss Universe? ",Ankahee,Love Story,0,0.0
-agentic,5a89e9f9554299669944a60d,Where does the team Rick Bennett coaches play?,Frank L. Messa Rink,Ebbets Field,0,0.0
-agentic,5ab39d2b5542992ade7c6df0,"Which Las Vegas casino, owned by MGM and Italian themed, stands on the site of the former Dunes hotel?",Bellagio,MGM Grand Las Vegas,0,0.0
-agentic,5ab24cab55429970612095da,What was the nationality of the defending champion Julia Görges defeated during the 2012 Dubai Tennis Championships semifinals?,Danish,German,0,0.0
-agentic,5addf54c5542990dbb2f7f1a,Singha is a beer produced by the Asian brewery founded in what year?,1933,1995,0,0.0
-agentic,5a7a619c55429941d65f25fa,When was the man that Fort Davis was named after born?,"June 3, 1808",1829,0,0.0
-agentic,5adef66c5542993a75d263c0,"Which film maker directed ""The Wrecker"", Albert de Courville or A. Edward Sutherland?",Albert de Courville,Albert de Courville,1,1.0
-agentic,5adc631155429947ff173942,"In what year was the band who released ""Page Avenue"" formed?",2000,1991,0,0.0
-agentic,5abf205e5542993fe9a41de0,Yannick Kergoat has edited such films as an American psychological horror thriller directed by Mathieu Kassovitz with a worldwide gross of what?,$141.6 million,141.6 million,1,1.0
-agentic,5a7dbc075542997cc2c47488,Overture is a song on a double album by The Who first released in what year?,1969,1969,1,1.0
-agentic,5ab675545542995eadeefff5,North Mountain was billed as a cross between Rambo and another film directed by whom?,Ang Lee,Bretten Hannam,0,0.0
-agentic,5a79c5945542994bb9457086,"Bat 21 Bravo was the call sign for this US Air Force Lieutenant Colonel during the vietnam war who was rescued behind the lines of North Vietnam in what is known as the largest, longest, and most complex search-and-rescue operation during the Vietnam War","Iceal ""Gene"" Hambleton",Gene Hambleton,0,0.8
-agentic,5a72e4375542992359bc31bf,"Who is older, Lucy Gichuhi or Bob Day?",Bob Day,Bob Day,1,1.0
-agentic,5a8b28fa55429949d91db4d3,"What genus does the chimpanzee that the has a similar mating system to early humans, according to the authors of ""Sex at Dawn"", make up?",Pan,Pan,1,1.0
-agentic,5a76318c5542992db947373d,Which actor from Trading Places and Die Hard also starred in Maniac Cop III: Badge of Silence?,Paul Gleason,Robert Z'Dar,0,0.0
-agentic,5a8bb0095542996e8ac889ce,Somebody Up There Likes Me starred the actor who played Ron Swanson on what NBC sitcom?,Parks and Recreation,Parks and Recreation,1,1.0
-agentic,5ac45384554299204fd21f22,What is the occupation the woman who won the title of Miss Minnesota and Miss America in 1989?,television commentator and author,public speaker,0,0.0
-agentic,5ab9ca43554299753720f872,The Rentals and Suede are both what?,rock band,rock bands,0,0.5
-agentic,5ae3f2fe5542995ad6573ccf,The 2015 New York Jets season began with the team being coached by which former player who spent 8 years in the NFL as a safety?,Todd Robert Bowles,Alex Anthony,0,0.0
-agentic,5abcd21c5542993a06baf973,The most famous guest at the Hotel Lester-Lester Cafe won four Olympic golds at what Games?,1936,1972,0,0.0
-agentic,5ae1ec485542997f29b3c1a9,"What is the birthdate of this Egyptian professional footballer, who plays as a forward, and whose hometown is Basyoun?",15 June 1992,1993,0,0.0
-agentic,5ade8d9a55429975fa854f0f,"What was the length of the original span of the bridge which made ocean beaches on the Eastern Shore of Maryland more accessible to visitors from Washington, D.C.?",4.3 mi,4.3 mi,1,1.0
-agentic,5ae67fad5542991bbc976100,"The Mutlu Onaral album ""Livin' It"" was produced by the bassist for what duo?",Hall & Oates,The Who,0,0.0
-agentic,5ac49e505542996feb3fe918,"When was the second promotional single from the album that contained ""State of Grace"" released?","October 2, 2012",2001,0,0.0
-agentic,5ab626e6554299110f2199e8,"How densely populated is this state, where one of the last actions, Battle of Point Judith, took place, compared to other U.S. states?",second most densely populated,"1,000",0,0.0
-agentic,5a875f6a5542996e4f3087a9,What symbol identifies the currency that is maintained by the caja de conversión?,$,$,1,1.0
-agentic,5a808ae8554299485f59864e,"Who was a member of more comedy troupes, Doug Langway or Terry Jones?","Terence Graham Parry ""Terry"" Jones",Terry Jones,0,0.5714285714285715
-agentic,5ab740d85542992aa3b8c7ff,Ahmed Brahim had supposed contacts with the professor of Contemporary Islamic Studies at what institution?,St Antony's College,Oxford,0,0.0
-agentic,5a78adf2554299148911f91a,The Miami Marlins and the organization's right-handed pitcher Kenny Koplove play in which home field park?,Marlins Park,Marlins Park,1,1.0
-agentic,5a764cb75542992d0ec06094,"USS Thach, is an ""Oliver Hazard Perry""-class frigate, was a ship of the United States Navy, named after which World War II naval aviator, air combat tactician, and United States Navy admiral ?","John Smith ""Jimmy"" Thach",John Thach,0,0.6666666666666666
-agentic,5a73583455429901807dafcf,"In which professional wrestling promotion did Randy Savage perform, after he left the World Wrestling Federation?",World Championship Wrestling,International Wrestling Revolution Group,0,0.28571428571428575
-agentic,5a8c7cbe554299653c1aa095,Are  André Cayatte and William Dieterle of different nationalities?,yes,yes,1,1.0
-agentic,5a8e8f225542990e94052b55,"ACF Fiorentina returned to Serie A, following a two-year absence after the bankruptcy of the previous incarnation of the club, which Spanish retired footballer who played as a forward, were among the highly rated players to sign up for Fiorentina, either permanently or on loan?",Javier García Portillo,Dario Dainelli,0,0.0
-agentic,5a80e307554299260e20a1a6,What band performed heir second single off their debut album at he twenty-ninth annual WrestleMania professional wrestling pay-per-view  event produced by WWE?,Living Colour,WWE,0,0.0
-agentic,5a83594f5542996488c2e421,One of the actor's from Harm's way received his most praised role as a war veteran Fred Derry.  What was the name of the movie Fred Derry is from?,The Best Years of Our Lives,In Harm's Way,0,0.0
-agentic,5ade529c5542997c77adedf8,"What is the name of the German Shephard dog of which While London Sleeps was one of the films made for the dog, excludong Tintin or The Adventures of Tintin?",Rin Tin Tin,Rin Tin Tin,1,1.0
-agentic,5ae65ce35542996d980e7b12,Tom Watkins played college football for a team that plays their home games at what stadium?,Jack Trice Stadium,Wien Stadium,0,0.4
-agentic,5a77d25555429949eeb29f6c,Which 2017 American 3D film was written by Cinco Paul and Ken Daurio?,Despicable Me 3,The Last Jedi,0,0.0
-agentic,5a7d195e5542995ed0d165e7,"Rana Gujral is an Indian American Entrepreneur, Executive, a Columnist and an Investor, in 2017, he was awarded the ""Entrepreneur of the Month"" by ""CIO Magazine"", also known as CIO.com, was founded in 1987 in Framingham, Massachusetts, to serve executives and technology decision makers in the information technology field and the burgeoning role of which occupation?",Chief Information Officer,Chief Information Officer,1,1.0
-agentic,5ab8036355429936677940a3,"The 357th Fighter Squadron (357 FS) is part of the 355th Fighter Wing at Davis-Monthan Air Force Base, Arizona, it operates which The 357th Fighter Squadron (357 FS) is part of the 355th Fighter Wing at Davis-Monthan Air Force Base, Arizona??",Fairchild Republic A-10 Thunderbolt II,F-16 Fighting Falcon,0,0.0
-agentic,5a7a7fa55542995eb53be84f,"Carry On England is the 28th in the series of ""Carry On"" films to be made, it was the second and last ""Carry On"" film for Diane Langton (born 31 May 1947) is an English actress and singer, most notable for playing Nana McQueen in ""Hollyoaks"" from 2007 to 2009, and then again from when?",2012,2012,1,1.0
-agentic,5a74525955429979e28828f7,"Which film follows the adventure of three pets, The Incredible Journey or Miss Marple?",The Incredible Journey,The Incredible Journey,1,1.0
-agentic,5a876e505542993e715abf3e,"In the Irish presidential election of what year, outgoing President Patrick Hillery agreed under enormous political pressure to seek a second term, though Seán MacBride, a former Nobel Peace Prize and Lenin Peace Prize winner, made it known in the newspaper that he wanted to contest the office,  an Irish government minister, a prominent international politician and a Chief of Staff of the IRA? ",1983,1979,0,0.0
-agentic,5a7fdc7e5542995d8a8ddf37,"""If You Ever Leave Me"" is a vocal duet between Barbra Streisand and Vince Gill, The song was written by which American adult contemporary and pop/rock singer, songwriter, musician and record producer who has sold over 30 million records?",Richard Noel Marx,Richard Marx,0,0.8
-agentic,5ab3f01055429976abd1bcf8,What is the capital of the Canandian territory in which lies the land that was claimed in the Comprehensive Land Claim Agreement of 1993 signed by the Sahtu Tribal Council and the Government of Canada?,Yellowknife,Yellowknife,1,1.0
+Mode,QID,Question,Gold,Prediction,EM,F1,SupportRecall
+agentic,5a7f64e655429969796c1a2a,In which film did the French actor Eriq Ebouaney appear that stars Rebecca Romijn and was screened at Cannes Film Festival in 2002?,Femme Fatale,Femme Fatale,1,1.0,
+agentic,5abc3477554299700f9d7818,"What movie did ""the king of cool"" play in with Bud Ekins as his stunt double?","""The Great Escape""",The Great Escape,1,1.0,
+agentic,5a8ccb97554299441c6b9f0c,Who did the man who Muhammad Ali beat in a surprise title win knock out in 1962?,Floyd Patterson,Muhammad Ali,0,0.0,
+agentic,5a86ef3e55429960ec39b6df,What cup that Cambridge United will participate in is called the Carabao Cup for sponsorship reasons?,EFL Cup,FA Cup,0,0.5,
+agentic,5a82fb0a55429954d2e2ebe1,John Coolidge Adams is an American composer of classical music and opera whose first opera was inspired by U.S. President Richard Nixon's visit to China in what year?,1972,1972,1,1.0,

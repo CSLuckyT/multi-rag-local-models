@@ -37,6 +37,8 @@ full = [
     "trl>=0.10.1",
     "bitsandbytes>=0.43.1",
     "matplotlib>=3.8.0",
+    "sentence-transformers>=2.6.0",
+    "bert-score>=0.3.13",
 ]
 dev = [
     "pytest>=7.0.0",

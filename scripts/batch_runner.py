@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import List, Dict, Any, Optional
 
 from tqdm import tqdm
-from arag import LLMClient, BaseAgent, ToolRegistry, Config, BaselineRAGRunner
+from arag import LLMClient, BaseAgent, ToolRegistry, Config, BaselineRAGRunner, EnhancedRAGRunner
 from arag.data.hotpotqa import build_hotpotqa_artifacts
 from arag.retrieval.faiss_store import FaissArtifactStore
 from arag.tools.keyword_search import KeywordSearchTool
@@ -47,6 +47,7 @@ class BatchRunner:
         self._shared_tools = self._init_shared_tools() if self._run_agentic() else None
         self._llm_client = self._create_llm_client()
         self._baseline_runner = self._init_baseline_runner() if self._run_baseline() else None
+        self._enhanced_runner = self._init_enhanced_runner() if self._run_enhanced() else None
 
         prompt_file = Path(__file__).parent.parent / "src/arag/agent/prompts/default.txt"
         if prompt_file.exists():
@@ -55,10 +56,13 @@ class BatchRunner:
             self._system_prompt = "You are a helpful assistant."
 
     def _run_agentic(self) -> bool:
-        return self.mode in {"agentic", "both"}
+        return self.mode in {"agentic", "both", "all"}
 
     def _run_baseline(self) -> bool:
-        return self.mode in {"baseline", "both"}
+        return self.mode in {"baseline", "both", "all"}
+
+    def _run_enhanced(self) -> bool:
+        return self.mode in {"enhanced", "all"}
 
     def _ensure_data_ready(self) -> Dict[str, str]:
         data_dir = self.config.get("data.prepared_dir", "data/hotpotqa")
@@ -124,6 +128,16 @@ class BatchRunner:
             artifact_dir=self.config.get("retrieval.artifact_dir", "data/hotpotqa/index"),
             embedding_model=self.config.get("embedding.model", "BAAI/bge-m3"),
             device=self.config.get("runtime.device") or self.config.get("embedding.device"),
+        )
+
+    def _init_enhanced_runner(self) -> EnhancedRAGRunner:
+        return EnhancedRAGRunner(
+            llm_client=self._llm_client,
+            artifact_dir=self.config.get("retrieval.artifact_dir", "data/hotpotqa/index"),
+            embedding_model=self.config.get("embedding.model", "BAAI/bge-m3"),
+            rerank_model=self.config.get("enhanced.rerank_model", "BAAI/bge-reranker-v2-m3"),
+            device=self.config.get("runtime.device") or self.config.get("embedding.device"),
+            max_context_chars=self.config.get("enhanced.max_context_chars", 3500),
         )
     
     def _load_questions(self) -> List[Dict[str, Any]]:
@@ -232,6 +246,50 @@ class BatchRunner:
                 'error': str(e)
             }
 
+    def _process_enhanced(self, item: Dict[str, Any]) -> Dict[str, Any]:
+        qid = item.get("qid") or item.get("id")
+        question = item.get("question", "")
+        gold_answer = item.get("answer", item.get("gold_answer", ""))
+
+        try:
+            result = self._enhanced_runner.run(
+                question=question,
+                n_first=self.config.get("enhanced.n_first", 30),
+                k_rerank=self.config.get("enhanced.k_rerank", 5),
+                use_hyde=self.config.get("enhanced.use_hyde", True),
+                filter_min_score=self.config.get("enhanced.filter_min_score", float("-inf")),
+                temperature=self.config.get("llm.temperature", 0.0),
+                max_new_tokens=self.config.get("llm.max_tokens", 32),
+            )
+            return {
+                "mode": "enhanced",
+                "qid": qid,
+                "question": question,
+                "gold_answer": gold_answer,
+                "pred_answer": result["generated_answer"],
+                "pred_answer_raw": result["raw_generated_answer"],
+                "hyde_query": result.get("hyde_query"),
+                "retrieved_chunks": result["retrieved_chunks"],
+                "retrieved_indices": result["retrieved_indices"],
+                "retrieved_titles": result.get("retrieved_titles", []),
+                "retrieved_sent_ids": result.get("retrieved_sent_ids", []),
+                "rerank_scores": result.get("rerank_scores", []),
+                "n_first": result["n_first"],
+                "k_rerank": result["k_rerank"],
+                "use_hyde": result["use_hyde"],
+                "temperature": result["temperature"],
+            }
+        except Exception as e:
+            return {
+                "mode": "enhanced",
+                "qid": qid,
+                "question": question,
+                "gold_answer": gold_answer,
+                "pred_answer": f"Error: {str(e)}",
+                "pred_answer_raw": f"Error: {str(e)}",
+                "error": str(e),
+            }
+
     def _process_baseline(self, item: Dict[str, Any]) -> Dict[str, Any]:
         qid = item.get('qid') or item.get('id')
         question = item.get('question', '')
@@ -270,6 +328,8 @@ class BatchRunner:
 
         if self._run_baseline():
             self._run_mode("baseline", self._process_baseline)
+        if self._run_enhanced():
+            self._run_mode("enhanced", self._process_enhanced)
         if self._run_agentic():
             self._run_mode("agentic", self._process_agentic)
 
@@ -281,7 +341,7 @@ def main():
     parser.add_argument("--output", "-o", required=True, help="Output directory")
     parser.add_argument("--limit", "-l", type=int, default=None, help="Limit number of questions")
     parser.add_argument("--workers", "-w", type=int, default=1, help="Reserved for future use with local models")
-    parser.add_argument("--mode", choices=["baseline", "agentic", "both"], default=None, help="Execution mode")
+    parser.add_argument("--mode", choices=["baseline", "agentic", "enhanced", "both", "all"], default=None, help="Execution mode: both=baseline+agentic, all=baseline+enhanced+agentic")
     parser.add_argument("--verbose", "-v", action="store_true", help="Verbose output")
     
     args = parser.parse_args()
